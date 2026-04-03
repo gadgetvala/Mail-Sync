@@ -277,6 +277,8 @@ async function processMessage(gmail, email, messageId, config) {
     return "saved";
   } catch (err) {
     if (err.code === 11000) return "skipped"; // duplicate key — safe race condition
+    const status = err.code || err.status || err?.response?.status;
+    if (status === 404) return "skipped"; // message deleted between list and fetch
     log.error(
       "PROCESS",
       `[${email}] Failed to process message ${messageId}: ${err.message}`,
