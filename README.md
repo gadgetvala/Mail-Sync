@@ -39,6 +39,18 @@ MailSync is a self-hosted Gmail archival system that continuously syncs one or m
 
 ---
 
+## Screenshots
+
+**Account Overview** — all connected Gmail accounts with sync status and controls
+
+![Account Overview](assets/sample1.png)
+
+**Settings Panel** — configure attachment storage (local disk or AWS S3)
+
+![Settings Panel](assets/sample2.png)
+
+---
+
 ## Tech Stack
 
 | Layer              | Technology                                                    |
@@ -274,6 +286,8 @@ The home page shows all connected Gmail accounts with:
 - Unread count
 - Last sync timestamp
 
+![Account Overview](assets/sample1.png)
+
 ### Adding an Account
 
 Click **Add Account** to start the OAuth flow for a new Gmail address. No server restart required.
@@ -302,6 +316,8 @@ The **Settings** panel lets you configure:
 - Attachment storage backend (local disk or AWS S3)
 - Maximum attachment size limit
 - AWS S3 credentials (bucket, region, access key)
+
+![Settings Panel](assets/sample2.png)
 
 ### Revoking Access
 
