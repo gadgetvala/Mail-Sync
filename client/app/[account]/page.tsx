@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connectDB, GmailEmail, GmailLabel, SyncState, AccountCredentials } from "@/lib/db";
+import SearchBar from "./SearchBar";
 
 const PAGE_SIZE = 50;
 
@@ -16,10 +17,17 @@ const SYSTEM_LABELS = [
 
 type FilterKey = "inbox" | "starred" | "sent" | "drafts" | "spam" | "trash" | "all";
 
-function buildQuery(account: string, filter: FilterKey) {
+function buildQuery(account: string, filter: FilterKey, q?: string) {
   const base: Record<string, unknown> = { syncedFromAccount: account };
   const found = SYSTEM_LABELS.find((l) => l.key === filter);
   if (found?.field) base[found.field] = true;
+  if (q) {
+    base.$or = [
+      { subject: { $regex: q, $options: "i" } },
+      { from:    { $regex: q, $options: "i" } },
+      { snippet: { $regex: q, $options: "i" } },
+    ];
+  }
   return base;
 }
 
@@ -57,23 +65,24 @@ interface ThreadRow {
 
 interface PageProps {
   params: Promise<{ account: string }>;
-  searchParams: Promise<{ filter?: string; page?: string }>;
+  searchParams: Promise<{ filter?: string; page?: string; q?: string }>;
 }
 
 export default async function AccountPage({ params, searchParams }: PageProps) {
   const { account: encodedAccount } = await params;
-  const { filter: rawFilter, page: rawPage } = await searchParams;
+  const { filter: rawFilter, page: rawPage, q: rawQ } = await searchParams;
 
   const account = decodeURIComponent(encodedAccount);
   const filter = (rawFilter ?? "inbox") as FilterKey;
   const page = Math.max(1, parseInt(rawPage ?? "1", 10));
+  const q = rawQ?.trim() ?? "";
 
   await connectDB();
 
   const creds = await AccountCredentials.findOne({ email: account }).lean();
   if (!creds) notFound();
 
-  const query = buildQuery(account, filter);
+  const query = buildQuery(account, filter, q || undefined);
 
   const [totalAgg, threads, labels, syncState] = await Promise.all([
     GmailEmail.aggregate([
@@ -114,7 +123,9 @@ export default async function AccountPage({ params, searchParams }: PageProps) {
   const inboxUnread = labelMap.get("INBOX")?.messagesUnread ?? 0;
 
   function buildHref(f: string, p = 1) {
-    return `/${encodedAccount}?filter=${f}&page=${p}`;
+    const params = new URLSearchParams({ filter: f, page: String(p) });
+    if (q) params.set("q", q);
+    return `/${encodedAccount}?${params.toString()}`;
   }
 
   return (
@@ -178,13 +189,14 @@ export default async function AccountPage({ params, searchParams }: PageProps) {
         {/* Thread list */}
         <main className="flex-1 flex flex-col min-w-0 bg-white">
           {/* Toolbar */}
-          <div className="flex items-center justify-between px-5 py-2.5 border-b border-teal-100">
-            <span className="text-xs text-slate-400 font-medium">
+          <div className="flex items-center gap-4 px-5 py-2.5 border-b border-teal-100">
+            <SearchBar account={encodedAccount} filter={filter} q={q} />
+            <span className="text-xs text-slate-400 font-medium shrink-0 hidden sm:block">
               {total === 0
-                ? "No threads"
+                ? (q ? `No results for "${q}"` : "No threads")
                 : `${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()}`}
             </span>
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-0.5 ml-auto">
               <Link
                 href={buildHref(filter, page - 1)}
                 aria-disabled={page <= 1}
@@ -239,7 +251,9 @@ export default async function AccountPage({ params, searchParams }: PageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <p className="text-slate-400 text-sm">No threads in this folder</p>
+              <p className="text-slate-400 text-sm">
+                {q ? `No results for "${q}"` : "No threads in this folder"}
+              </p>
             </div>
           ) : (
             <ul className="divide-y divide-teal-50">
@@ -248,7 +262,7 @@ export default async function AccountPage({ params, searchParams }: PageProps) {
                 return (
                   <li key={thread._id}>
                     <Link
-                      href={`/${encodedAccount}/${encodeURIComponent(thread._id)}?filter=${filter}&page=${page}`}
+                      href={`/${encodedAccount}/${encodeURIComponent(thread._id)}?${new URLSearchParams({ filter, page: String(page), ...(q ? { q } : {}) }).toString()}`}
                       className="flex items-center gap-3 px-5 py-2.5 hover:bg-slate-50 transition-colors duration-150 cursor-pointer"
                     >
                       {/* Unread dot */}
